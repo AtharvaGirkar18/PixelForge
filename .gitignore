@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtualenv / venv
+venv/
+.venv/
+env/
+
+# Local dev data
+.devstorage/
+*.log
+*.pid
+
+# Secrets / env files
+.env
+.env.*
+secrets/
+
+# Docker build cache
+*.tar
+*.tar.gz
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Spec / generated
+spec.txt
+extract.ps1

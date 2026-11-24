@@ -1,0 +1,17 @@
+services:
+  redis:
+    image: redis:7-alpine
+  api:
+    build: {context: ., dockerfile: api/Dockerfile}
+    environment: {REDIS_URL: "redis://redis:6379/0"}
+    ports: ["8000:8000"]
+    volumes: [storage:/storage]
+    depends_on: [redis]
+  worker:
+    build: {context: ., dockerfile: worker/Dockerfile}
+    environment: {REDIS_URL: "redis://redis:6379/0"}
+    volumes: [storage:/storage]
+    depends_on: [redis]
+    deploy: {replicas: 3}   # or: docker compose up --scale worker=4
+volumes:
+  storage:

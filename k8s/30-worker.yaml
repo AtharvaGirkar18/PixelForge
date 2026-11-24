@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: image-worker
+  namespace: imgproc
+spec:
+  replicas: 2            # API queue autoscaler manages replicas between 2 and 8
+  selector:
+    matchLabels: {app: image-worker}
+  template:
+    metadata:
+      labels: {app: image-worker}
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: worker
+          image: image-worker:1.0
+          imagePullPolicy: IfNotPresent
+          envFrom: [{configMapRef: {name: imgproc-config}}]
+          volumeMounts: [{name: storage, mountPath: /storage}]
+          resources:
+            requests: {cpu: 250m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+      volumes:
+        - name: storage
+          persistentVolumeClaim: {claimName: imgproc-storage-pvc}

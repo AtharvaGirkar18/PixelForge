@@ -1,0 +1,16 @@
+# Core API / worker runtime
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9
+redis>=5.0.3
+pillow>=10.3.0
+numpy>=1.26.4
+kubernetes>=29.0.0
+
+# Local dev (not needed inside containers)
+fakeredis[lua]>=2.23.2
+
+# Testing
+pytest>=8.2.0
+requests>=2.32.0
+httpx>=0.27.0

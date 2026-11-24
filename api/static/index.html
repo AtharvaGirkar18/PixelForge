@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PixelForge Cloud · Distributed Image Processing on Kubernetes</title>
+  <meta name="description" content="Live dashboard for a containerized image-processing service: Redis queue, Kubernetes worker pods, autoscaling and self-healing.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="bg-orbs" aria-hidden="true"><i></i><i></i><i></i></div>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="logo">
+      <svg viewBox="0 0 32 32" width="28" height="28"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs><path d="M16 2 28 9v14L16 30 4 23V9z" fill="none" stroke="url(#lg)" stroke-width="2.2"/><path d="M16 9 22 12.5v7L16 23l-6-3.5v-7z" fill="url(#lg)"/></svg>
+    </div>
+    <div>
+      <h1>PixelForge <span>Cloud</span></h1>
+      <p>Distributed image processing · Docker + Kubernetes</p>
+    </div>
+  </div>
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-view="dashboard" id="tab-dashboard">Dashboard</button>
+    <button class="tab" data-view="process" id="tab-process">Process</button>
+    <button class="tab" data-view="jobs" id="tab-jobs">Jobs</button>
+    <button class="tab" data-view="results" id="tab-results">Results</button>
+  </nav>
+  <div class="top-right">
+    <span class="pill" id="k8s-pill"><i class="dot"></i><span>K8s: …</span></span>
+    <span class="pill" id="conn-pill"><i class="dot"></i><span>connecting</span></span>
+  </div>
+</header>
+
+<main>
+<!-- =============================================================== DASHBOARD -->
+<section class="view active" id="view-dashboard">
+
+  <div class="selfheal" id="selfheal" hidden></div>
+
+  <!-- pipeline -->
+  <div class="panel pipeline" id="pipeline">
+    <div class="stage" id="st-upload"><div class="stage-ic">⬆</div><div class="stage-t">User Upload</div><div class="stage-n" id="pl-submitted">0</div><div class="stage-s">jobs submitted</div></div>
+    <div class="flow" id="flow1"><b></b><b></b><b></b></div>
+    <div class="stage" id="st-queue"><div class="stage-ic redis">◉</div><div class="stage-t">Redis Queue</div><div class="stage-n" id="pl-queued">0</div><div class="stage-s">jobs waiting</div></div>
+    <div class="flow" id="flow2"><b></b><b></b><b></b></div>
+    <div class="stage" id="st-workers"><div class="stage-ic">⚙</div><div class="stage-t">Worker Pods</div><div class="stage-n" id="pl-workers">0</div><div class="stage-s"><span id="pl-processing">0</span> processing in parallel</div></div>
+    <div class="flow" id="flow3"><b></b><b></b><b></b></div>
+    <div class="stage" id="st-done"><div class="stage-ic ok">✓</div><div class="stage-t">Completed</div><div class="stage-n" id="pl-completed">0</div><div class="stage-s"><span id="pl-rate">0.0</span> jobs/s</div></div>
+  </div>
+
+  <!-- batch + launcher -->
+  <div class="grid-2">
+    <div class="panel batch" id="batch-panel">
+      <div class="panel-h"><h2 id="batch-title">Processing Dataset</h2><span class="tag" id="batch-tag">idle</span></div>
+      <div class="bigbar"><div class="bigbar-fill" id="batch-fill"></div><span class="bigbar-pct" id="batch-pct">0%</span></div>
+      <div class="batch-sub"><b id="batch-done">0</b> / <b id="batch-total">0</b> images completed <span class="eta" id="batch-eta"></span></div>
+      <div class="stats" id="stats">
+        <div class="stat"><span>Total jobs</span><b id="s-total">0</b></div>
+        <div class="stat q"><span>Queued</span><b id="s-queued">0</b></div>
+        <div class="stat p"><span>Processing</span><b id="s-processing">0</b></div>
+        <div class="stat c"><span>Completed</span><b id="s-completed">0</b></div>
+        <div class="stat f"><span>Failed</span><b id="s-failed">0</b></div>
+        <div class="stat w"><span>Active workers</span><b id="s-workers">0</b></div>
+      </div>
+      <div class="batch-actions" id="batch-actions" hidden>
+        <a class="btn ghost" id="batch-download" href="#">⬇ Download processed dataset (.zip)</a>
+        <button class="btn ghost" id="batch-view">View results</button>
+      </div>
+    </div>
+
+    <div class="panel launcher">
+      <div class="panel-h"><h2>Demo Workload</h2><span class="tag">real jobs · real queue</span></div>
+      <p class="hint">Generates source images on the server and pushes every job through Redis to the worker pods.</p>
+      <div class="form-grid">
+        <label>Operation
+          <select id="d-op">
+            <option value="blur">Blur (CPU heavy)</option>
+            <option value="resize">Resize</option>
+            <option value="augment">Dataset augmentation</option>
+            <option value="sharpen">Sharpen</option>
+            <option value="compress">Compress</option>
+            <option value="convert">Convert → WebP</option>
+            <option value="grayscale">Grayscale</option>
+          </select>
+        </label>
+        <label id="d-int-wrap">CPU intensity (filter passes)
+          <select id="d-int"><option value="1">Light · 1 pass</option><option value="6" selected>Medium · 6 passes</option><option value="20">Heavy · 20 passes</option></select>
+        </label>
+        <label>Source images <input type="number" id="d-orig" min="1" max="100" value="20"></label>
+        <label id="d-count-wrap">Number of images (jobs) <input type="number" id="d-count" min="1" max="5000" value="500"></label>
+        <label id="d-per-wrap" hidden>Augmentations per image <input type="number" id="d-per" min="1" max="100" value="5"></label>
+        <label>Image size
+          <select id="d-size"><option value="1200">Medium 1200px</option><option value="1600" selected>Large 1600px</option><option value="2400">Heavy 2400px</option></select>
+        </label>
+      </div>
+      <div class="equation" id="d-eq">500 jobs</div>
+      <div class="row">
+        <button class="btn primary" id="d-start">🚀 Start Processing</button>
+        <button class="btn ghost danger" id="d-reset" title="Clears queue, jobs and files">Reset</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- worker pods -->
+  <div class="section-h"><h2>Worker Pods</h2><span class="muted" id="workers-sub">0 active</span></div>
+  <div class="workers" id="workers"><div class="empty">Waiting for workers to register…</div></div>
+
+  <!-- queue + kubernetes -->
+  <div class="grid-2">
+    <div class="panel">
+      <div class="panel-h"><h2>Redis Queue</h2><span class="tag redis"><b id="q-len">0</b> jobs waiting</span></div>
+      <div class="qlist" id="qlist"><div class="empty">Queue is empty</div></div>
+    </div>
+
+    <div class="panel k8s">
+      <div class="panel-h"><h2>Kubernetes Workers</h2><span class="tag" id="hpa-tag">QUEUE AUTOSCALER</span></div>
+      <div class="replica-row">
+        <div class="rep big"><span>Current</span><b id="k-cur">0</b></div>
+        <div class="rep"><span>Minimum</span><b id="k-min">–</b></div>
+        <div class="rep"><span>Maximum</span><b id="k-max">–</b></div>
+        <div class="rep"><span>Desired</span><b id="k-des">–</b></div>
+      </div>
+      <div class="podtiles" id="podtiles"></div>
+      <div class="cpu">
+        <div class="cpu-h"><span>Average worker CPU (informational)</span><b id="cpu-val">–</b></div>
+        <div class="cpu-bar"><div id="cpu-fill"></div><i id="cpu-target"></i></div>
+        <div class="cpu-f"><span>Autoscaling signal: queue depth</span></div>
+      </div>
+      <div class="scalemsg" id="scalemsg">Steady</div>
+      <div class="scalechain" id="scalechain"></div>
+    </div>
+  </div>
+
+  <!-- timeline -->
+  <div class="panel">
+    <div class="panel-h"><h2>Live Timeline</h2>
+      <div class="legend"><i style="--c:#22d3ee"></i>Queue <i style="--c:#fbbf24"></i>Processing <i style="--c:#a78bfa"></i>Worker replicas <i style="--c:#34d399"></i>CPU %</div></div>
+    <canvas id="chart" height="190"></canvas>
+  </div>
+
+  <!-- activity -->
+  <div class="panel">
+    <div class="panel-h"><h2>Live Activity</h2><span class="muted">real events from workers, API and Kubernetes</span></div>
+    <ul class="feed" id="feed"></ul>
+  </div>
+</section>
+
+<!-- =============================================================== PROCESS -->
+<section class="view" id="view-process">
+  <div class="grid-2 proc">
+    <div class="panel">
+      <div class="panel-h"><h2>1 · Upload images</h2></div>
+      <div class="drop" id="drop">
+        <div class="drop-ic">🖼</div>
+        <p><b>Drag &amp; drop</b> images or a dataset folder</p>
+        <p class="muted">JPG · PNG · WebP — up to 50 MB each</p>
+        <div class="row center">
+          <button class="btn ghost" id="pick-files">Choose images</button>
+          <button class="btn ghost" id="pick-folder">Choose folder</button>
+        </div>
+        <input type="file" id="file-input" accept=".jpg,.jpeg,.png,.webp,image/*" multiple hidden>
+        <input type="file" id="folder-input" webkitdirectory multiple hidden>
+      </div>
+      <div class="filelist" id="filelist"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-h"><h2>2 · Choose operation</h2></div>
+      <div class="opgrid" id="opgrid"></div>
+      <div class="params" id="params"></div>
+      <div class="equation" id="p-eq">Select images to begin</div>
+      <button class="btn primary wide" id="p-submit" disabled>Process images</button>
+    </div>
+  </div>
+
+  <div class="panel" id="track-panel" hidden>
+    <div class="panel-h"><h2>3 · Live result</h2><span class="tag" id="track-tag"></span></div>
+    <div class="bigbar slim"><div class="bigbar-fill" id="track-fill"></div><span class="bigbar-pct" id="track-pct">0%</span></div>
+    <div class="cards" id="track-cards"></div>
+  </div>
+</section>
+
+<!-- =============================================================== JOBS -->
+<section class="view" id="view-jobs">
+  <div class="panel">
+    <div class="panel-h"><h2>Job Status</h2>
+      <div class="row">
+        <select id="j-batch"><option value="">All batches</option></select>
+        <select id="j-status"><option value="">All statuses</option><option>QUEUED</option><option>PROCESSING</option><option>COMPLETED</option><option>FAILED</option></select>
+      </div>
+    </div>
+    <div class="tablewrap"><table class="jobs">
+      <thead><tr><th>Job</th><th>Image</th><th>Operation</th><th>Status</th><th>Progress</th><th>Worker</th><th>Time</th></tr></thead>
+      <tbody id="jobs-body"></tbody>
+    </table></div>
+    <div class="muted center" id="jobs-count"></div>
+  </div>
+</section>
+
+<!-- =============================================================== RESULTS -->
+<section class="view" id="view-results">
+  <div class="panel">
+    <div class="panel-h"><h2>Processed Results</h2>
+      <div class="row"><select id="r-batch"></select><a class="btn ghost" id="r-zip" href="#">⬇ Download all (.zip)</a></div>
+    </div>
+    <div class="gallery" id="gallery"><div class="empty">No completed results yet.</div></div>
+    <div class="muted center" id="r-count"></div>
+  </div>
+</section>
+</main>
+
+<div class="lightbox" id="lightbox" hidden>
+  <div class="lb-card">
+    <button class="lb-x" id="lb-x" aria-label="Close">✕</button>
+    <h3 id="lb-title"></h3>
+    <div class="lb-imgs">
+      <figure><img id="lb-in" alt="original"><figcaption>Original</figcaption></figure>
+      <figure><img id="lb-out" alt="processed"><figcaption>Processed</figcaption></figure>
+    </div>
+    <div class="lb-meta" id="lb-meta"></div>
+    <a class="btn primary" id="lb-dl" href="#">⬇ Download result</a>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>
